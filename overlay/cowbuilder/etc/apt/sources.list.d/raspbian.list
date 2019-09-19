@@ -1,0 +1,2 @@
+#deb http://archive.raspbian.org/raspbian buster main
+#deb-src http://archive.raspbian.org/raspbian buster main

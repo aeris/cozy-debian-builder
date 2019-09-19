@@ -1,0 +1,42 @@
+version: "3.7"
+
+x-aliases:
+  cowbuilder: &cowbuilder
+    build:
+      context: .
+      dockerfile: dockerfiles/cowbuilder
+      network: ${COMPOSE_PROJECT_NAME}_default
+    image: aeris22/cowbuilder
+
+services:
+  apt-cacher-ng:
+    build:
+      context: .
+      dockerfile: dockerfiles/apt-cacher-ng
+    image: aeris22/apt-cacher-ng
+    volumes:
+    - ./volumes/apt-cacher-ng/:/var/cache/apt-cacher-ng/
+    ports:
+    - "3142:3142"
+
+  aptly:
+    <<: *cowbuilder
+    command: aptly serve --listen=:80
+    ports:
+    - "8080:80"
+    volumes:
+    - ./volumes/aptly/:/var/lib/aptly/
+
+  cowbuilder:
+    <<: *cowbuilder
+    cap_add:
+    - SYS_ADMIN
+    volumes:
+    - ./volumes/pbuilder/:/var/cache/pbuilder/
+    - ./volumes/aptly/:/var/lib/aptly/
+    - ./volumes/gpg/:/root/.gnupg/
+    - /run/user/1000/gnupg/S.gpg-agent.extra:/run/user/0/gnupg/S.gpg-agent
+    - ./src/:/src/
+    links:
+    - apt-cacher-ng
+    - aptly

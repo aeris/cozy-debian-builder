@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -xe
+
+cat > /etc/apt/apt.conf.d/60-recommends <<-EOF
+	APT::Install-Recommends "0";
+	APT::Install-Suggests "0";
+EOF
+cat > /etc/apt/apt.conf.d/00-proxy <<-EOF
+	Acquire::http { Proxy "http://apt-cacher-ng:3142"; }
+EOF
+
+rm -f /etc/apt/sources.list
+
+case "${DIST}" in
+debian)
+	cat > /etc/apt/sources.list.d/debian.list <<-EOF
+		deb http://deb.debian.org/debian/ ${VERSION} main contrib
+		deb http://deb.debian.org/debian/ ${VERSION}-updates main contrib
+		deb http://deb.debian.org/debian-security/ ${VERSION}/updates main contrib
+	EOF
+
+	if [ "$VERSION" == "stretch" ]; then
+		cat >> /etc/apt/sources.list.d/debian.list <<-EOF
+			deb http://deb.debian.org/debian/ ${VERSION}-backports main contrib
+		EOF
+
+		cat > /etc/apt/preferences.d/50-backports <<-EOF
+			Package: *
+			Pin: release a=stretch-backports
+			Pin-Priority: 500
+		EOF
+	fi
+	;;
+raspbian)
+	cat > /etc/apt/sources.list.d/raspbian.list <<-EOF
+		deb http://archive.raspbian.org/raspbian/ ${VERSION} main contrib
+	EOF
+	;;
+ubuntu)
+	cat > /etc/apt/sources.list.d/ubuntu.list <<-EOF
+		deb http://fr.archive.ubuntu.com/ubuntu/ ${VERSION} main restricted universe multiverse
+	EOF
+	;;
+esac
+
+apt update
+apt install -y -qq curl gnupg2 apt-transport-https ca-certificates
+if [ "$ARCH" != "armhf" ]; then
+	# Seems there is a trouble with curl & certificates here for Raspbian…
+	curl -s https://apt.cozy.io/cozy.gpg | apt-key --keyring /etc/apt/trusted.gpg.d/cozy.gpg add -
+
+	cat > /etc/apt/sources.list.d/cozy.list <<-EOF
+		deb http://aptly/${DIST}-${VERSION}/ ${VERSION} testing
+	EOF
+	apt update
+fi

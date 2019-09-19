@@ -1,0 +1,13 @@
+FROM debian:buster
+
+RUN apt update && \
+    DEBIAN_FRONTEND=noninteractive apt install -y -qq --no-install-recommends --no-install-suggests \
+    apt-utils tini apt-cacher-ng
+
+VOLUME ["/var/cache/apt-cacher-ng/"]
+EXPOSE 3142/tcp
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/usr/sbin/apt-cacher-ng", "-c", "/etc/apt-cacher-ng"]
+
+COPY ./overlay/apt-cacher-ng/ /

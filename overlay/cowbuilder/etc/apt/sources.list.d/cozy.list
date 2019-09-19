@@ -1,0 +1,5 @@
+deb https://apt.cozy.io/debian buster main
+deb-src https://apt.cozy.io/debian buster main
+
+deb http://aptly/debian buster main
+deb-src http://aptly/debian buster main

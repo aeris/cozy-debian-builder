@@ -1,0 +1,60 @@
+set -e
+
+export http_proxy=http://apt-cacher-ng:3142/
+
+: ${DIST:="debian"}
+: ${VERSION:="buster"}
+if [ "$DIST" == "debian" ]; then
+	MIRRORSITE="http://deb.debian.org/debian/"
+	COMPONENTS="main contrib"
+	DEBOOTSTRAPOPTS=("${DEBOOTSTRAPOPTS[@]}"
+		"--keyring=/usr/share/keyrings/debian-archive-keyring.gpg")
+	: ${VERSION:="stretch"}
+	: ${ARCH:="amd64"}
+elif [ "$DIST" == "raspbian" ]; then
+	MIRRORSITE="http://archive.raspbian.org/raspbian/"
+	COMPONENTS="main contrib"
+	DEBOOTSTRAPOPTS=("${DEBOOTSTRAPOPTS[@]}"
+		"--keyring=/etc/apt/trusted.gpg.d/raspbian.gpg")
+	: ${VERSION:="stretch"}
+	: ${ARCH:="armhf"}
+elif [ "$DIST" == "ubuntu" ]; then
+	MIRRORSITE="http://fr.archive.ubuntu.com/ubuntu/"
+	COMPONENTS="main restricted universe multiverse"
+	DEBOOTSTRAPOPTS=("${DEBOOTSTRAPOPTS[@]}"
+		"--keyring=/usr/share/keyrings/ubuntu-archive-keyring.gpg")
+	: ${VERSION:="xenial"}
+	: ${ARCH:="amd64"}
+else
+	echo "Unknown version: $VERSION"
+	# exit 1
+fi
+
+if [ "$DIST" == "" ]; then
+	echo "DIST is not set"
+fi
+if [ "$ARCH" == "" ]; then
+	echo "ARCH is not set"
+fi
+
+NAME="$DIST-$VERSION-$ARCH"
+
+if [ "$(dpkg --print-architecture)" != "${ARCH}" ]; then
+ 	DEBOOTSTRAP="qemu-debootstrap"
+fi
+
+DEBOOTSTRAPOPTS=("${DEBOOTSTRAPOPTS[@]}" "--arch=$ARCH")
+BASETGZ="/var/cache/pbuilder/$NAME/base.tar.gz"
+: ${BASEPATH:="/var/cache/pbuilder/$NAME/base.cow"}
+DISTRIBUTION="$VERSION"
+: ${BUILDRESULT:="/var/cache/pbuilder/$NAME/result/"}
+APTCACHE="/var/cache/pbuilder/$NAME/aptcache/"
+APTCACHEHARDLINK=no
+
+HOOKDIR="$HOME/.pbuilder/hook.d/"
+if [ "$USE_HOME" == "yes" ]; then
+	BUILD_HOME="$BUILDDIR"
+fi
+
+PBUILDERSATISFYDEPENDSCMD="/usr/lib/pbuilder/pbuilder-satisfydepends-apt"
+# [ "$DIST" == "ubuntu" ] && PBUILDERSATISFYDEPENDSCMD="/usr/lib/pbuilder/pbuilder-satisfydepends-aptitude"

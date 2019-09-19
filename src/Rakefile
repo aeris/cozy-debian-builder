@@ -1,0 +1,305 @@
+require './utils'
+
+CURRENT_DIR = Rake.application.original_dir
+Dir.chdir CURRENT_DIR
+
+def clone(repo, dir, branch = nil)
+	FileUtils.rmtree dir
+	c = ['git', 'clone', repo, '--depth=1']
+	c += ['--branch', branch] if branch
+	c << dir
+	cmd c
+end
+
+def debian_task(name, dir, build_orig_sources, build_debian_sources, extract_source = nil, home: false, network: false)
+	namespace name do
+		desc "Build #{dir} .dsc"
+		task :dsc do
+			source = orig_sources = debian_sources = nil
+
+			do_in_tmp_dir do
+				extract_source.call if extract_source
+
+				source = result %w[dpkg-parsechangelog -S Source]
+				debian_version = result %w[dpkg-parsechangelog -S Version]
+				debian_version.sub! /(?:.*:)/, ''
+				upstream_version = debian_version.sub /-[^-]+$/, '\1'
+
+				orig_sources = "#{source}_#{upstream_version}.orig.tar.xz"
+				orig_sources = File.join CURRENT_DIR, orig_sources
+				build_orig_sources.call upstream_version, orig_sources
+
+				debian_sources = "#{source}_#{debian_version}.debian.tar.xz"
+				debian_sources = File.join CURRENT_DIR, debian_sources
+				build_debian_sources.call debian_version, debian_sources
+			end
+
+			do_in_tmp_dir do |dir|
+				cmd 'tar', '--force-local', '--strip-components=1', '-xf', orig_sources
+				cmd 'tar', '--force-local', '-xf', debian_sources
+				build_dsc dir
+			end
+		end
+
+		dists = DISTS.collect do |dist, config|
+			archs, versions = config.values_at :archs, :versions
+			versions = versions.collect do |version|
+				as = archs.collect do |arch|
+					name = "deb:#{dist}:#{version}:#{arch}"
+					desc "Build #{dir} #{dist} #{version} #{arch} Debian package"
+					task name do
+						dsc = last_version Dir["#{dir}_*.dsc"]
+						n, v = File.basename(dsc, '.*').split '_'
+						package = { package: n, version: v }
+						os = { dist: dist, version: version, arch: arch }
+						cowbuilder package, os, home: home, network: network
+					end
+					name
+				end
+
+				name = "deb:#{dist}:#{version}"
+				desc "Build #{dir} #{dist} #{version} Debian package"
+				task name => as
+				name
+			end
+
+			name = "deb:#{dist}"
+			desc "Build #{dir} #{dist} Debian package"
+			task name => versions
+			name
+		end
+
+		desc "Build #{dir} Debian package"
+		task 'deb' => dists
+		name
+
+		# desc 'Publish to aptly'
+		# task :publish, %i[dists] => %i[deb] do |_, args|
+		# 	dists = args_list args.dists, DISTS.keys
+		# 	dists.each { |d| publish d, passphrase: true }
+		# end
+	end
+end
+
+debian_task 'couchdb-js', 'couch-libmozjs185',
+	-> (_, target) do
+		cmd 'wget', '-q', 'https://ftp.mozilla.org/pub/spidermonkey/releases/1.8.5/js185-1.0.0.tar.gz'
+		cmd 'gzip', '-d', 'js185-1.0.0.tar.gz'
+		cmd 'xz', 'js185-1.0.0.tar'
+		cmd 'mv', 'js185-1.0.0.tar.xz', target
+	end,
+	-> (_, target) do
+		cmd 'tar', '--force-local', '--exclude-vcs', '--exclude', '*.symbols', '-Jcf', target, 'debian'
+	end,
+	-> do
+		clone 'https://github.com/apache/couchdb-pkg/', 'couchdb-pkg'
+		FileUtils.mv 'couchdb-pkg/js/debian', '.'
+	end
+
+
+debian_task 'couchdb', 'couchdb',
+	-> (_, target) do
+		cmd 'wget', '-q', 'https://www-eu.apache.org/dist/couchdb/source/2.3.1/apache-couchdb-2.3.1.tar.gz'
+		cmd 'gzip', '-d', 'apache-couchdb-2.3.1.tar.gz'
+		cmd 'xz', 'apache-couchdb-2.3.1.tar'
+		cmd 'mv', 'apache-couchdb-2.3.1.tar.xz', target
+	end,
+	-> (_, target) do
+		cmd 'tar', '--force-local', '--exclude-vcs', '-Jcf', target, 'debian'
+	end,
+	-> do
+		clone 'https://github.com/cozy/debian-couchdb/', 'debian',
+		 	VERSIONS[:couchdb][:debian]
+	end
+
+
+debian_task 'python3-couchdb', 'python3-couchdb',
+	-> (_, target) do
+		cmd 'tar', '--force-local', '--exclude-vcs', '-Jcf', target, 'python3-couchdb'
+	end,
+	-> (_, target) do
+		cmd 'tar', '--force-local', '--exclude-vcs', '-Jcf', target, 'debian'
+	end,
+	-> do
+		clone 'https://github.com/djc/couchdb-python/', 'python3-couchdb',
+			VERSIONS[:'python3-couchdb'][:src]
+		clone 'https://github.com/cozy/debian-python3-couchdb/', 'debian',
+		 	VERSIONS[:'python3-couchdb'][:debian]
+	end
+
+
+debian_task :cozy, 'cozy-stack',
+	-> (version, target) do
+		Dir.chdir 'cozy-stack' do |dir|
+			go_path = File.expand_path './vendor'
+			path = "#{File.join go_path, 'bin'}:#{ENV['PATH']}"
+			FileUtils.mkdir go_path
+			env = { GOPATH: go_path, VERSION_STRING: version, PATH: path }
+			cmd 'go', 'mod', 'download', env: env
+			FileUtils.rmtree File.join go_path, 'pkg/mod/cache'
+			cmd %w[scripts/build.sh assets], env: env
+		end
+		cmd 'tar', '--force-local', '--exclude-vcs', '-Jcf', target, 'cozy-stack'
+	end,
+	-> (_, target) do
+		cmd 'tar', '--force-local', '--exclude-vcs', '-Jcf', target, 'debian'
+	end,
+	-> do
+		clone 'https://github.com/cozy/cozy-stack/', 'cozy-stack', VERSIONS[:cozy][:src]
+		clone 'https://github.com/cozy/debian-cozy/', 'debian', VERSIONS[:cozy][:debian]
+	end
+
+debian_task :coclyco, 'cozy-coclyco',
+	-> (_, target) do
+		cmd 'tar', '--force-local', '--exclude-vcs', '-Jcf', target, 'cozy-coclyco'
+	end,
+	-> (_, target) do
+		cmd 'tar', '--force-local', '--exclude-vcs', '-Jcf', target, 'debian'
+	end,
+	-> do
+		clone 'https://github.com/cozy/cozy-coclyco/', 'cozy-coclyco', VERSIONS[:coclyco][:src]
+		clone 'https://github.com/cozy/debian-cozy-coclyco/', 'debian', VERSIONS[:coclyco][:debian]
+	end
+
+debian_task :nsjail, :nsjail,
+	-> (_, target) do
+		cmd 'tar', '--force-local', '--exclude-vcs', '-Jcf', target, 'nsjail'
+	end,
+	-> (_, target) do
+		cmd 'tar', '--force-local', '--exclude-vcs', '-Jcf', target, 'debian'
+	end,
+	-> do
+		clone 'https://github.com/google/nsjail/', 'nsjail', VERSIONS[:nsjail][:src]
+		cmd 'git', 'submodule', 'init', chdir: 'nsjail'
+		cmd 'git', 'submodule', 'update', chdir: 'nsjail'
+		clone 'https://github.com/cozy/debian-nsjail/', 'debian', VERSIONS[:nsjail][:debian]
+	end
+
+
+task deb: %i[cozy:deb coclyco:deb]
+
+namespace :cowbuilder do
+	dists = DISTS.collect do |dist, config|
+		archs, versions = config.values_at :archs, :versions
+		versions = versions.collect do |version|
+			as = archs.collect do |arch|
+				init = "init:#{dist}:#{version}:#{arch}"
+				desc "Create cowbuilder #{dist} #{version} #{arch} base image"
+				task(init) { cowbuilder_init dist, version, arch }
+
+				clean = "clean:#{dist}:#{version}:#{arch}"
+				desc "Delete cowbuilder #{dist} #{version} #{arch} base image"
+				task(clean) { cowbuilder_clean dist, version, arch }
+
+				[init, clean]
+			end.to_h
+
+			init = "init:#{dist}:#{version}"
+			desc "Create cowbuilder #{dist} #{version} base images"
+			task init => as.keys
+
+			clean = "clean:#{dist}:#{version}"
+			desc "Delete cowbuilder #{dist} #{version} base images"
+			task clean => as.values
+
+			[init, clean]
+		end.to_h
+
+		init = "init:#{dist}"
+		desc "Create cowbuilder #{dist} base images"
+		task init => versions.keys
+
+		clean = "clean:#{dist}"
+		desc "Delete cowbuilder #{dist} base images"
+		task clean => versions.values
+
+		[init, clean]
+	end.to_h
+
+	desc 'Create cowbuilder base images'
+	task init: dists.keys
+
+	desc 'Delete cowbuilder base images'
+	task clean: dists.values
+end
+
+namespace :aptly do
+	dists = DISTS.collect do |dist, config|
+		archs, versions = config.values_at :archs, :versions
+		versions = versions.collect do |version|
+			repos = ENVS.collect do |env|
+				name = "init:repo:#{dist}:#{version}:#{env}"
+				repo = "#{dist}-#{version}-#{env}"
+				desc "Create aptly #{dist} #{version} #{env} repository"
+				task name do
+					cmd 'aptly', 'repo', 'create',
+						"-component=#{env}",
+						"-distribution=#{version}",
+						repo
+				end
+				[name, repo]
+			end.to_h
+
+			desc "Create aptly #{dist} #{version} repositories"
+			repo = "init:repo:#{dist}:#{version}"
+			task repo => repos.keys
+
+			desc "Create aptly #{dist} #{version} publish"
+			publish = "init:publish:#{dist}:#{version}"
+			task publish => repo do
+				cmd [
+					'aptly', 'publish', 'repo',
+					'-acquire-by-hash',
+					"-gpg-key=#{GPG_KEY}",
+					"-component=#{',' * (repos.size - 1)}",
+					"-distribution=#{version}",
+					"-architectures=#{archs.join ','}"
+				] + repos.values + ["#{dist}-#{version}"]
+			end
+
+			[repo, publish]
+		end.to_h
+
+		desc "Create aptly #{dist} repositories"
+		repo = "init:repo:#{dist}"
+		task repo => versions.keys
+
+		desc "Create aptly #{dist} publish"
+		publish = "init:publish:#{dist}"
+		task publish => versions.values
+
+		[repo, publish]
+	end.to_h
+
+	desc "Create aptly repositories"
+	task 'init:repo': dists.keys
+
+	desc "Create aptly publishes"
+	task 'init:publish': dists.values
+
+	desc "Create aptly repositories and publishes"
+	task init: :'init:publish'
+
+	desc 'Drop aptly repositories and publishes'
+	task(:drop) { aptly_drop }
+
+	desc 'Publish artifacts on aptly'
+	task :publish do
+		DISTS.each do |dist, config|
+			versions = config.fetch :versions
+			versions.each { |v| update_publish dist, v }
+		end
+	end
+	#
+	# desc 'Remove old aptly artifacts'
+	# task :clean do
+	# 	DISTS.each do |dist, versions|
+	# 		versions.each do |version|
+	# 			ENVS.collect do |env|
+	# 				repo = "#{dist}-#{version}-#{env}"
+	# 				aptly_keep_last_version repo
+	# 			end
+	# 		end
+	# 	end
+	# end
+end

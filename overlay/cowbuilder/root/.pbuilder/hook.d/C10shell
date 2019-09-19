@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# invoke shell if build fails.
+exit 0
+BUILDDIR="${BUILDDIR:-/tmp/buildd}"
+apt install -y -qq "${APTGETOPT[@]}" vim-nox less
+cd "$BUILDDIR"/*/debian/..
+/bin/bash < /dev/tty > /dev/tty 2> /dev/tty

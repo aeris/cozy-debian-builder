@@ -1,0 +1,45 @@
+FROM debian:buster
+
+RUN apt update && \
+    DEBIAN_FRONTEND=noninteractive apt install -y -qq --no-install-recommends --no-install-suggests \
+        apt-utils \
+        dialog \
+        apt-transport-https \
+        ca-certificates \
+        vim \
+        less \
+        ripgrep \
+        curl \
+        debhelper \
+        dh-python \
+        debootstrap \
+        cowbuilder \
+        qemu-user-static \
+        python3-setuptools \
+        tini \
+        ubuntu-keyring \
+        ruby-dev \
+        ruby-awesome-print \
+        libapt-pkg-dev \
+        gnupg \
+        git \
+        make \
+        g++ \
+        pkg-config \
+        erlang-base \
+        rebar \
+        pkg-kde-tools \
+        golang-go \
+    && rm -rf /var/lib/apt/lists/*
+RUN wget -q https://github.com/aptly-dev/aptly/releases/download/v1.4.0/aptly_1.4.0_amd64.deb -O /tmp/aptly_1.4.0_amd64.deb \
+    && dpkg -i /tmp/aptly_1.4.0_amd64.deb \
+    && rm -f /tmp/aptly_1.4.0_amd64.deb
+RUN gem install apt-pkg
+RUN mkdir /src/
+WORKDIR /src/
+VOLUME ["/var/cache/pbuilder/", "/var/lib/aptly/", "/src/"]
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/bin/bash"]
+
+COPY ./overlay/cowbuilder/ /

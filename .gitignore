@@ -1,0 +1,6 @@
+/volumes/
+/src/result/
+/src/*.tar.*
+/src/*.dsc
+/src/*.buildinfo
+/src/*.changes
