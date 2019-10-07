@@ -1,7 +1,9 @@
 FROM debian:buster
 
-RUN apt update && \
-    DEBIAN_FRONTEND=noninteractive apt install -y -qq --no-install-recommends --no-install-suggests \
+ENV DEBIAN_FRONTEND noninteractive
+
+RUN apt update -qq && \
+    apt install -y -qq --no-install-recommends --no-install-suggests \
     apt-utils tini apt-cacher-ng
 
 VOLUME ["/var/cache/apt-cacher-ng/"]
