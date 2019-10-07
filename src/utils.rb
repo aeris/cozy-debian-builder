@@ -204,3 +204,31 @@ end
 def do_in_tmp_dir(args=nil)
 	Dir.mktmpdir(args, Dir.pwd) { |dir| Dir.chdir(dir) { yield dir } }
 end
+
+def directory_keep_last_version(repo)
+		exts = %w[deb ddeb buildinfo changes].product(ARCHS + %w[all])
+										.collect { |e, a| "_#{a}.#{e}"}
+
+		exts = (%w[.debian.tar.xz .debian.tar.bz2 .orig.tar.xz .orig.tar.gz .dsc] + exts)
+								.collect { |e| Regexp.escape e }
+								.join '|'
+		exts = Regexp.compile /(#{exts})$/
+
+		def extract(file, exts)
+				match = exts.match file
+				raise "Unknown extension for #{file}" unless match
+				ext = Regexp.escape match[1]
+				match = /^([^_]+)_(.+)(#{ext})$/.match file
+				match[1..-1]
+		end
+
+		packages = Dir[File.join repo, '*']
+		packages = packages.collect { |p| File.basename p }
+							.collect { |l| [l, extract(l, exts)] }
+							.group_by { |l| l = l.last; [l.first, l.last] }
+		remove_old_versions(packages) do |p|
+				file = File.join repo, p
+				puts "Removing #{file}"
+				File.unlink file
+		end
+end

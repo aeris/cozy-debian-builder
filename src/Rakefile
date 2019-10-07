@@ -291,16 +291,28 @@ namespace :aptly do
 			versions.each { |v| update_publish dist, v, reference }
 		end
 	end
-	#
-	# desc 'Remove old aptly artifacts'
-	# task :clean do
-	# 	DISTS.each do |dist, versions|
-	# 		versions.each do |version|
-	# 			ENVS.collect do |env|
-	# 				repo = "#{dist}-#{version}-#{env}"
-	# 				aptly_keep_last_version repo
-	# 			end
-	# 		end
-	# 	end
-	# end
+end
+
+namespace :artifacts do
+	subs = DISTS.collect do |dist, config|
+		versions = config.fetch :versions
+		subs = versions.collect do |version|
+			desc "Clean #{dist} #{version} artifacts"
+			clean = "clean:#{dist}:#{version}"
+			task clean do
+				directory_keep_last_version File.join 'result', dist, version
+			end
+
+			clean
+		end
+
+		desc "Clean #{dist} artifacts"
+		clean = "clean:#{dist}"
+		task clean => subs
+
+		clean
+	end
+
+	desc "Clean artifacts"
+	task 'clean': subs
 end
