@@ -1,0 +1,21 @@
+FROM debian:buster
+ENV DEBIAN_FRONTEND noninteractive
+ENV container docker
+
+RUN echo 'debconf debconf/frontend select teletype' | debconf-set-selections
+
+RUN apt update -qq && \
+    apt install -y -qq --no-install-recommends --no-install-suggests systemd systemd-sysv tini \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN systemctl mask dev-hugepages.mount sys-fs-fuse-connections.mount
+RUN rm -f /etc/machine-id /var/lib/dbus/machine-id /usr/sbin/policy-rc.d
+
+WORKDIR /root/
+
+STOPSIGNAL SIGRTMIN+3
+VOLUME [ "/sys/fs/cgroup", "/run", "/run/lock", "/tmp" ]
+
+CMD ["/lib/systemd/systemd"]
+
+COPY ./overlay/test/buster/ /
