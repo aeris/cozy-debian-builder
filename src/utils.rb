@@ -148,8 +148,8 @@ def aptly_keep_last_version(repo)
 	remove_old_versions(packages) { |p| cmd ['aptly', 'repo', 'remove', repo, p] }
 end
 
-def update_repo(dist, version, result=nil, release: :testing)
-	result ||= File.join 'result', dist, version
+def update_repo(dist, version, result, release: :testing)
+	result = File.join 'result', dist, result
 	return unless Dir.exists? result
 
 	repo = "#{dist}-#{version}-#{release}"
@@ -161,12 +161,13 @@ def update_repo(dist, version, result=nil, release: :testing)
 end
 
 def update_publish(dist, version, result=nil)
+	result ||= version
 	update_repo dist, version, result
 
 	c = %w[aptly publish update]
 	c += ["-gpg-key=#{GPG_KEY}"]
 	c += ['-force-overwrite'] if ENV['FORCE_OVERWRITE']
-	c += [version, "#{dist}-#{version}"]
+	c += [version, dist]
 	cmd c
 end
 

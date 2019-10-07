@@ -9,15 +9,15 @@ VERSIONS = {
 DISTS = {
 	'debian' => {
 		archs: %w[amd64 armhf arm64],
-		versions: %w[stretch buster]
+		versions: %w[buster stretch]
 	},
 	'ubuntu' => {
 		archs: %w[amd64],
-		versions: %w[bionic disco]
+		versions: %w[disco bionic]
 	},
 	'raspbian' => {
 	 	archs: %w[armhf],
-		versions: %w[stretch buster]
+		versions: %w[buster stretch]
 	}
 }
 

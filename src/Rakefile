@@ -254,7 +254,7 @@ namespace :aptly do
 					"-component=#{',' * (repos.size - 1)}",
 					"-distribution=#{version}",
 					"-architectures=#{archs.join ','}"
-				] + repos.values + ["#{dist}-#{version}"]
+				] + repos.values + [dist]
 			end
 
 			[repo, publish]
@@ -287,7 +287,8 @@ namespace :aptly do
 	task :publish do
 		DISTS.each do |dist, config|
 			versions = config.fetch :versions
-			versions.each { |v| update_publish dist, v }
+			reference = versions.first
+			versions.each { |v| update_publish dist, v, reference }
 		end
 	end
 	#
